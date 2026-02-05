@@ -182,20 +182,23 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             if (uri.StartsWith("file:///", StringComparison.OrdinalIgnoreCase))
             {
                 var path = uri.Substring(8); // "file:///" を除去
-                path = System.Net.WebUtility.UrlDecode(path); // URLデコード
-                path = path.Replace('/', '\\'); // スラッシュをバックスラッシュに変換
                 
-                // UNCパスの場合（//server/share形式）
-                if (path.StartsWith("\\\\"))
+                // URLデコード（日本語などのエンコードされた文字を復元）
+                path = Uri.UnescapeDataString(path);
+                
+                // スラッシュをバックスラッシュに変換
+                path = path.Replace('/', '\\');
+                
+                // UNCパスの判定（ドライブレター（C:など）で始まらない場合）
+                bool isUncPath = !System.Text.RegularExpressions.Regex.IsMatch(path, @"^[a-zA-Z]:");
+                
+                // UNCパスの場合、先頭に\\を追加（2個必要）
+                if (isUncPath)
                 {
-                    // 既に正しい形式なので、そのまま開く
-                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
+                    path = @"\\" + path;
                 }
-                else
-                {
-                    // ローカルパスの場合
-                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
-                }
+                
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
             }
             else
             {
@@ -295,25 +298,34 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 return $"<a href='{System.Net.WebUtility.HtmlEncode(url)}' style='color: #0969da; text-decoration: underline; cursor: pointer;'>{encodedUrl}</a>";
             });
         
-        // UNC path \\server\share\path
+        // UNC path \\server\share\path (日本語を含むパスに対応)
         escaped = System.Text.RegularExpressions.Regex.Replace(escaped,
-            @"(\\\\[\w\d\.\-]+(?:\\[\w\d\.\-\s]+)+)",
+            @"(\\\\[^\s<>\\]+(?:\\[^\s<>\\]+)+)",
             match =>
             {
                 var path = match.Groups[1].Value;
-                // UNCパスのfile URLはfile://///server/share/path形式
-                var fileUrl = "file:////" + path.Substring(2).Replace("\\", "/"); // \\\\ を除く
+                // UNCパスをfile URLに変換: \\server\share → file:///server/share
+                // 各パス部分を個別にURLエンコード
+                var parts = path.Substring(2).Split('\\'); // \\ を除いてスラッシュで分割
+                var encodedParts = parts.Select(p => Uri.EscapeDataString(p));
+                var fileUrl = "file:///" + string.Join("/", encodedParts);
                 var encodedPath = System.Net.WebUtility.HtmlEncode(path);
                 return $"<a href='{System.Net.WebUtility.HtmlEncode(fileUrl)}' style='color: #0969da; text-decoration: underline; cursor: pointer;'>{encodedPath}</a>";
             });
         
-        // Windows path C:\path\to\file
+        // Windows path C:\path\to\file (日本語を含むパスに対応)
         escaped = System.Text.RegularExpressions.Regex.Replace(escaped,
-            @"([A-Za-z]:\\(?:[\w\d\.\-\s]+\\)*[\w\d\.\-\s]+)",
+            @"([A-Za-z]:\\(?:[^\s<>\\]+\\)*[^\s<>\\]+)",
             match =>
             {
                 var path = match.Groups[1].Value;
-                var fileUrl = "file:///" + path.Replace("\\", "/");
+                // Windowsパスをfile URLに変換: C:\folder → file:///C:/folder
+                // 各パス部分を個別にURLエンコード
+                var driveLetter = path.Substring(0, 2); // C:
+                var remaining = path.Substring(3); // C:\ 以降
+                var parts = remaining.Split('\\');
+                var encodedParts = parts.Select(p => Uri.EscapeDataString(p));
+                var fileUrl = "file:///" + driveLetter + "/" + string.Join("/", encodedParts);
                 var encodedPath = System.Net.WebUtility.HtmlEncode(path);
                 return $"<a href='{System.Net.WebUtility.HtmlEncode(fileUrl)}' style='color: #0969da; text-decoration: underline; cursor: pointer;'>{encodedPath}</a>";
             });
