@@ -1,16 +1,38 @@
 using Markdig;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 
 namespace MemoHub;
 
-public partial class MainWindow : Window
+public partial class MainWindow : Window, INotifyPropertyChanged
 {
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    private void OnPropertyChanged(string propertyName)
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+
     private readonly ObservableCollection<MemoRow> _items = new();
     private long? _editingId = null;
     private MemoRow? _currentMemo = null;
+    private bool _showActionButtons = true;
+
+    public bool ShowActionButtons
+    {
+        get => _showActionButtons;
+        set
+        {
+            if (_showActionButtons != value)
+            {
+                _showActionButtons = value;
+                OnPropertyChanged(nameof(ShowActionButtons));
+            }
+        }
+    }
 
     private readonly MarkdownPipeline _md = new MarkdownPipelineBuilder()
         .UseAdvancedExtensions()
@@ -22,6 +44,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        DataContext = this; // DataContextを設定
 
         List.ItemsSource = _items;
         LoadList(null);
@@ -58,12 +81,34 @@ public partial class MainWindow : Window
             
             ShowMode(DisplayMode.Empty);
         };
+        
+        // 初期表示：最終10件
+        LoadList(null, 10);
+        
+        // 保存された設定を読み込み
+        LoadSettings();
+        
+        // 検索ボックスにフォーカス
+        SearchBox.Focus();
     }
 
-    private void LoadList(string? q)
+    private void LoadSettings()
+    {
+        // ボタン表示設定を読み込み
+        var showButtons = Db.GetSetting("ShowActionButtons", "true");
+        ShowActionButtons = showButtons == "true";
+        
+        // トグルボタンの表示を更新（現在の状態ではなく、次のアクションを表示）
+        if (ToggleButtonsBtn != null)
+        {
+            ToggleButtonsBtn.Content = ShowActionButtons ? "👁️‍🗨️ ボタン非表示" : "👁️ ボタン表示";
+        }
+    }
+
+    private void LoadList(string? q, int? limit = null)
     {
         _items.Clear();
-        foreach (var m in Db.List(q))
+        foreach (var m in Db.List(q, limit))
             _items.Add(m);
     }
 
@@ -388,10 +433,43 @@ public partial class MainWindow : Window
 
     private void Search_Click(object sender, RoutedEventArgs e)
     {
-        LoadList(SearchBox.Text);
+        LoadList(SearchBox.Text); // 全件検索
         // 検索後は空の状態に戻す
         ShowMode(DisplayMode.Empty);
         List.SelectedItem = null;
+    }
+
+    private void Reset_Click(object sender, RoutedEventArgs e)
+    {
+        // 初期表示に戻る
+        SearchBox.Text = "";
+        LoadList(null, 10);
+        ShowMode(DisplayMode.Empty);
+        List.SelectedItem = null;
+        SearchBox.Focus();
+    }
+
+    private void ToggleButtons_Click(object sender, RoutedEventArgs e)
+    {
+        ShowActionButtons = !ShowActionButtons;
+        if (sender is Button btn)
+        {
+            btn.Content = ShowActionButtons ? "👁️‍🗨️ ボタン非表示" : "👁️ ボタン表示";
+        }
+        
+        // 設定を保存
+        Db.SaveSetting("ShowActionButtons", ShowActionButtons.ToString().ToLower());
+    }
+
+    private void Window_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        // Ctrl+Rでリセット
+        if (e.Key == System.Windows.Input.Key.R && 
+            (System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Control) == System.Windows.Input.ModifierKeys.Control)
+        {
+            Reset_Click(sender, e);
+            e.Handled = true;
+        }
     }
 
     private void SearchBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
