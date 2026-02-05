@@ -4,7 +4,8 @@
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         Title="MemoHub - Markdown メモアプリ" Height="800" Width="1000"
         Background="#F5F5F5"
-        Icon="memo_icon.ico">
+        Icon="memo_icon.ico"
+        KeyDown="Window_KeyDown">
     <Window.Resources>
         <!-- モダンなボタンスタイル -->
         <Style x:Key="PrimaryButton" TargetType="Button">
@@ -92,7 +93,16 @@
                              Padding="10,0" KeyDown="SearchBox_KeyDown"/>
                     <Button Content="🔍 検索" Style="{StaticResource SecondaryButton}" 
                             Margin="10,0,0,0" Click="Search_Click" Height="36"/>
+                    <Button Content="↻ リセット" Style="{StaticResource SecondaryButton}" 
+                            Margin="10,0,0,0" Click="Reset_Click" Height="36"
+                            ToolTip="初期表示に戻る (Ctrl+R)"/>
                 </StackPanel>
+                <!-- 右端にトグルボタンを配置 -->
+                <Button x:Name="ToggleButtonsBtn" Content="👁️‍🗨️ ボタン非表示" 
+                        Style="{StaticResource SecondaryButton}" 
+                        HorizontalAlignment="Right" VerticalAlignment="Center"
+                        Click="ToggleButtons_Click" Height="36"
+                        ToolTip="検索結果のボタン表示を切り替え"/>
             </Grid>
         </Border>
         <!-- メインコンテンツ -->
@@ -162,8 +172,18 @@
                                                        ToolTip="メモ内容のプレビュー（コピーボタンで全文コピー可能）"/>
                                         </Border>
                                         <!-- アクションボタン -->
-                                        <StackPanel Grid.Row="2" Orientation="Horizontal" 
+                                        <StackPanel x:Name="ActionButtonsPanel" Grid.Row="2" Orientation="Horizontal" 
                                                     Margin="0,10,0,0" HorizontalAlignment="Left">
+                                            <StackPanel.Style>
+                                                <Style TargetType="StackPanel">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Path=DataContext.ShowActionButtons, RelativeSource={RelativeSource AncestorType=Window}}" Value="False">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </StackPanel.Style>
                                             <Button Content="📋 コピー" Style="{StaticResource SecondaryButton}"
                                                     Tag="{Binding}" Click="Copy_Click" Margin="0,0,8,0"/>
                                             <Button Content="✏️ 編集" Style="{StaticResource SecondaryButton}"

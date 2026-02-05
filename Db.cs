@@ -35,34 +35,66 @@ public static class Db
           updated_at TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_memos_title ON memos(title);
+        
+        CREATE TABLE IF NOT EXISTS settings (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL
+        );
         """;
         cmd.ExecuteNonQuery();
     }
 
-    public static List<MemoRow> List(string? q)
+    // 設定を保存
+    public static void SaveSetting(string key, string value)
+    {
+        using var conn = Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+        INSERT INTO settings(key, value) VALUES ($key, $value)
+        ON CONFLICT(key) DO UPDATE SET value = $value;
+        """;
+        cmd.Parameters.AddWithValue("$key", key);
+        cmd.Parameters.AddWithValue("$value", value);
+        cmd.ExecuteNonQuery();
+    }
+
+    // 設定を読み込み
+    public static string? GetSetting(string key, string? defaultValue = null)
+    {
+        using var conn = Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT value FROM settings WHERE key = $key;";
+        cmd.Parameters.AddWithValue("$key", key);
+        var result = cmd.ExecuteScalar();
+        return result?.ToString() ?? defaultValue;
+    }
+
+    public static List<MemoRow> List(string? q, int? limit = null)
     {
         using var conn = Open();
         using var cmd = conn.CreateCommand();
 
+        var limitValue = limit ?? 300; // デフォルトは300件
+
         if (!string.IsNullOrWhiteSpace(q))
         {
-            cmd.CommandText = """
+            cmd.CommandText = $@"
             SELECT id, title, content, updated_at
             FROM memos
             WHERE title LIKE $like OR content LIKE $like
-            ORDER BY id DESC
-            LIMIT 300;
-            """;
+            ORDER BY updated_at DESC
+            LIMIT {limitValue};
+            ";
             cmd.Parameters.AddWithValue("$like", $"%{q.Trim()}%");
         }
         else
         {
-            cmd.CommandText = """
+            cmd.CommandText = $@"
             SELECT id, title, content, updated_at
             FROM memos
-            ORDER BY id DESC
-            LIMIT 300;
-            """;
+            ORDER BY updated_at DESC
+            LIMIT {limitValue};
+            ";
         }
 
         var list = new List<MemoRow>();
