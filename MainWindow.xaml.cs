@@ -484,11 +484,24 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void Window_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
+        var ctrl = (System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Control) == System.Windows.Input.ModifierKeys.Control;
+        
         // Ctrl+Rでリセット
-        if (e.Key == System.Windows.Input.Key.R && 
-            (System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Control) == System.Windows.Input.ModifierKeys.Control)
+        if (e.Key == System.Windows.Input.Key.R && ctrl)
         {
             Reset_Click(sender, e);
+            e.Handled = true;
+        }
+        // Ctrl+Nで新規メモ作成
+        else if (e.Key == System.Windows.Input.Key.N && ctrl)
+        {
+            New_Click(sender, e);
+            e.Handled = true;
+        }
+        // Ctrl+Sで検索
+        else if (e.Key == System.Windows.Input.Key.S && ctrl)
+        {
+            Search_Click(sender, e);
             e.Handled = true;
         }
     }
@@ -568,10 +581,26 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void Cancel_Click(object sender, RoutedEventArgs e)
     {
-        if (_currentMemo != null)
+        // 編集中のメモがある場合は、そのメモを表示
+        if (_editingId != null && _currentMemo != null)
+        {
             ViewMemoMode(_currentMemo);
+        }
         else
-            ShowMode(DisplayMode.Empty);
+        {
+            // 新規作成のキャンセル時は検索条件に応じて最初のメモを表示
+            var searchText = SearchBox.Text;
+            if (string.IsNullOrWhiteSpace(searchText))
+            {
+                // 検索なし：最新10件の最初のメモを表示
+                LoadListAndSelectFirst(null, 10);
+            }
+            else
+            {
+                // 検索中：検索結果の最初のメモを表示
+                LoadListAndSelectFirst(searchText);
+            }
+        }
     }
 
     private void Save_Click(object sender, RoutedEventArgs e)
