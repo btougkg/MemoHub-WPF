@@ -79,11 +79,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 HandleWebMessage(args.WebMessageAsJson);
             };
             
-            ShowMode(DisplayMode.Empty);
+            // 初期表示：最終10件を読み込み、最初のメモを表示
+            LoadListAndSelectFirst(null, 10);
         };
-        
-        // 初期表示：最終10件
-        LoadList(null, 10);
         
         // 保存された設定を読み込み
         LoadSettings();
@@ -110,6 +108,22 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _items.Clear();
         foreach (var m in Db.List(q, limit))
             _items.Add(m);
+    }
+
+    private void LoadListAndSelectFirst(string? q, int? limit = null)
+    {
+        LoadList(q, limit);
+        
+        // メモがある場合、最初のメモを選択して表示
+        if (_items.Count > 0)
+        {
+            List.SelectedItem = _items[0];
+            ViewMemoMode(_items[0]);
+        }
+        else
+        {
+            ShowMode(DisplayMode.Empty);
+        }
     }
 
     // 表示モード切り替え
@@ -168,20 +182,23 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             if (uri.StartsWith("file:///", StringComparison.OrdinalIgnoreCase))
             {
                 var path = uri.Substring(8); // "file:///" を除去
-                path = System.Net.WebUtility.UrlDecode(path); // URLデコード
-                path = path.Replace('/', '\\'); // スラッシュをバックスラッシュに変換
                 
-                // UNCパスの場合（//server/share形式）
-                if (path.StartsWith("\\\\"))
+                // URLデコード（日本語などのエンコードされた文字を復元）
+                path = Uri.UnescapeDataString(path);
+                
+                // スラッシュをバックスラッシュに変換
+                path = path.Replace('/', '\\');
+                
+                // UNCパスの判定（ドライブレター（C:など）で始まらない場合）
+                bool isUncPath = !System.Text.RegularExpressions.Regex.IsMatch(path, @"^[a-zA-Z]:");
+                
+                // UNCパスの場合、先頭に\\を追加（2個必要）
+                if (isUncPath)
                 {
-                    // 既に正しい形式なので、そのまま開く
-                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
+                    path = @"\\" + path;
                 }
-                else
-                {
-                    // ローカルパスの場合
-                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
-                }
+                
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
             }
             else
             {
@@ -281,25 +298,34 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 return $"<a href='{System.Net.WebUtility.HtmlEncode(url)}' style='color: #0969da; text-decoration: underline; cursor: pointer;'>{encodedUrl}</a>";
             });
         
-        // UNC path \\server\share\path
+        // UNC path \\server\share\path (日本語を含むパスに対応)
         escaped = System.Text.RegularExpressions.Regex.Replace(escaped,
-            @"(\\\\[\w\d\.\-]+(?:\\[\w\d\.\-\s]+)+)",
+            @"(\\\\[^\s<>\\]+(?:\\[^\s<>\\]+)+)",
             match =>
             {
                 var path = match.Groups[1].Value;
-                // UNCパスのfile URLはfile://///server/share/path形式
-                var fileUrl = "file:////" + path.Substring(2).Replace("\\", "/"); // \\\\ を除く
+                // UNCパスをfile URLに変換: \\server\share → file:///server/share
+                // 各パス部分を個別にURLエンコード
+                var parts = path.Substring(2).Split('\\'); // \\ を除いてスラッシュで分割
+                var encodedParts = parts.Select(p => Uri.EscapeDataString(p));
+                var fileUrl = "file:///" + string.Join("/", encodedParts);
                 var encodedPath = System.Net.WebUtility.HtmlEncode(path);
                 return $"<a href='{System.Net.WebUtility.HtmlEncode(fileUrl)}' style='color: #0969da; text-decoration: underline; cursor: pointer;'>{encodedPath}</a>";
             });
         
-        // Windows path C:\path\to\file
+        // Windows path C:\path\to\file (日本語を含むパスに対応)
         escaped = System.Text.RegularExpressions.Regex.Replace(escaped,
-            @"([A-Za-z]:\\(?:[\w\d\.\-\s]+\\)*[\w\d\.\-\s]+)",
+            @"([A-Za-z]:\\(?:[^\s<>\\]+\\)*[^\s<>\\]+)",
             match =>
             {
                 var path = match.Groups[1].Value;
-                var fileUrl = "file:///" + path.Replace("\\", "/");
+                // Windowsパスをfile URLに変換: C:\folder → file:///C:/folder
+                // 各パス部分を個別にURLエンコード
+                var driveLetter = path.Substring(0, 2); // C:
+                var remaining = path.Substring(3); // C:\ 以降
+                var parts = remaining.Split('\\');
+                var encodedParts = parts.Select(p => Uri.EscapeDataString(p));
+                var fileUrl = "file:///" + driveLetter + "/" + string.Join("/", encodedParts);
                 var encodedPath = System.Net.WebUtility.HtmlEncode(path);
                 return $"<a href='{System.Net.WebUtility.HtmlEncode(fileUrl)}' style='color: #0969da; text-decoration: underline; cursor: pointer;'>{encodedPath}</a>";
             });
@@ -433,19 +459,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void Search_Click(object sender, RoutedEventArgs e)
     {
-        LoadList(SearchBox.Text); // 全件検索
-        // 検索後は空の状態に戻す
-        ShowMode(DisplayMode.Empty);
-        List.SelectedItem = null;
+        LoadListAndSelectFirst(SearchBox.Text); // 全件検索して最初のメモを表示
     }
 
     private void Reset_Click(object sender, RoutedEventArgs e)
     {
         // 初期表示に戻る
         SearchBox.Text = "";
-        LoadList(null, 10);
-        ShowMode(DisplayMode.Empty);
-        List.SelectedItem = null;
+        LoadListAndSelectFirst(null, 10);
         SearchBox.Focus();
     }
 
@@ -463,11 +484,24 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void Window_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
+        var ctrl = (System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Control) == System.Windows.Input.ModifierKeys.Control;
+        
         // Ctrl+Rでリセット
-        if (e.Key == System.Windows.Input.Key.R && 
-            (System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Control) == System.Windows.Input.ModifierKeys.Control)
+        if (e.Key == System.Windows.Input.Key.R && ctrl)
         {
             Reset_Click(sender, e);
+            e.Handled = true;
+        }
+        // Ctrl+Nで新規メモ作成
+        else if (e.Key == System.Windows.Input.Key.N && ctrl)
+        {
+            New_Click(sender, e);
+            e.Handled = true;
+        }
+        // Ctrl+Sで検索
+        else if (e.Key == System.Windows.Input.Key.S && ctrl)
+        {
+            Search_Click(sender, e);
             e.Handled = true;
         }
     }
@@ -530,16 +564,43 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (ok != MessageBoxResult.Yes) return;
 
         Db.Delete(m.Id);
-        LoadList(SearchBox.Text);
-        ShowMode(DisplayMode.Empty);
+        
+        // 削除後、検索条件に応じてリストを再読み込みして最初のメモを表示
+        var searchText = SearchBox.Text;
+        if (string.IsNullOrWhiteSpace(searchText))
+        {
+            // 検索なし：最新10件を表示
+            LoadListAndSelectFirst(null, 10);
+        }
+        else
+        {
+            // 検索中：検索結果の最初のメモを表示
+            LoadListAndSelectFirst(searchText);
+        }
     }
 
     private void Cancel_Click(object sender, RoutedEventArgs e)
     {
-        if (_currentMemo != null)
+        // 編集中のメモがある場合は、そのメモを表示
+        if (_editingId != null && _currentMemo != null)
+        {
             ViewMemoMode(_currentMemo);
+        }
         else
-            ShowMode(DisplayMode.Empty);
+        {
+            // 新規作成のキャンセル時は検索条件に応じて最初のメモを表示
+            var searchText = SearchBox.Text;
+            if (string.IsNullOrWhiteSpace(searchText))
+            {
+                // 検索なし：最新10件の最初のメモを表示
+                LoadListAndSelectFirst(null, 10);
+            }
+            else
+            {
+                // 検索中：検索結果の最初のメモを表示
+                LoadListAndSelectFirst(searchText);
+            }
+        }
     }
 
     private void Save_Click(object sender, RoutedEventArgs e)
