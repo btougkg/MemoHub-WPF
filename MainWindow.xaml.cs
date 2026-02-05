@@ -79,11 +79,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 HandleWebMessage(args.WebMessageAsJson);
             };
             
-            ShowMode(DisplayMode.Empty);
+            // 初期表示：最終10件を読み込み、最初のメモを表示
+            LoadListAndSelectFirst(null, 10);
         };
-        
-        // 初期表示：最終10件
-        LoadList(null, 10);
         
         // 保存された設定を読み込み
         LoadSettings();
@@ -110,6 +108,22 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _items.Clear();
         foreach (var m in Db.List(q, limit))
             _items.Add(m);
+    }
+
+    private void LoadListAndSelectFirst(string? q, int? limit = null)
+    {
+        LoadList(q, limit);
+        
+        // メモがある場合、最初のメモを選択して表示
+        if (_items.Count > 0)
+        {
+            List.SelectedItem = _items[0];
+            ViewMemoMode(_items[0]);
+        }
+        else
+        {
+            ShowMode(DisplayMode.Empty);
+        }
     }
 
     // 表示モード切り替え
@@ -433,19 +447,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void Search_Click(object sender, RoutedEventArgs e)
     {
-        LoadList(SearchBox.Text); // 全件検索
-        // 検索後は空の状態に戻す
-        ShowMode(DisplayMode.Empty);
-        List.SelectedItem = null;
+        LoadListAndSelectFirst(SearchBox.Text); // 全件検索して最初のメモを表示
     }
 
     private void Reset_Click(object sender, RoutedEventArgs e)
     {
         // 初期表示に戻る
         SearchBox.Text = "";
-        LoadList(null, 10);
-        ShowMode(DisplayMode.Empty);
-        List.SelectedItem = null;
+        LoadListAndSelectFirst(null, 10);
         SearchBox.Focus();
     }
 
