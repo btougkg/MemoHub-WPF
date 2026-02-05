@@ -551,8 +551,19 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (ok != MessageBoxResult.Yes) return;
 
         Db.Delete(m.Id);
-        LoadList(SearchBox.Text);
-        ShowMode(DisplayMode.Empty);
+        
+        // 削除後、検索条件に応じてリストを再読み込みして最初のメモを表示
+        var searchText = SearchBox.Text;
+        if (string.IsNullOrWhiteSpace(searchText))
+        {
+            // 検索なし：最新10件を表示
+            LoadListAndSelectFirst(null, 10);
+        }
+        else
+        {
+            // 検索中：検索結果の最初のメモを表示
+            LoadListAndSelectFirst(searchText);
+        }
     }
 
     private void Cancel_Click(object sender, RoutedEventArgs e)
